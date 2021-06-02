@@ -1,5 +1,8 @@
 const {connection} = require('../db_connection');
 const router = require('express').Router();
+const jwt = require('jsonwebtoken'); 
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 router.get('/', (req, res) => {
   const sql = "SELECT * FROM admin";
@@ -12,16 +15,53 @@ router.get('/', (req, res) => {
   });
 });
 
-router.post('/', (req, res) => {
-  const sql = "INSERT INTO admin SET ?";
-  connection.query(sql, req.body, (err, results) => {
-    if (err) {
-      res.status(500).send({errorMessage: err.message});
-    } else {
-      res.status(201).json({id: results.insertId, ...req.body});
+router.post('/login', (req, res) => {
+  const username = req.body.username;
+  const password = req.body.password;
+  connection.query(
+    "SELECT * FROM admin WHERE username=?;", 
+    username, 
+    (err, result) => {
+      if (err) {
+        res.send({err : err});
+      }
+      if (result.length > 0) {
+        bcrypt.compare(password, result[0].password, (error, response) =>{
+          if (response) {
+            const user = {name : result[0].username} ;
+            const token = jwt.sign(user, process.env.TOKEN_SECRET);
+            res.json({user : user, token : token});
+          } else {
+            res.json({message : "Mauvaise combinaison d'identifiants"})
+          }
+        });
+      } else {
+        res.json({message : "Utilisateur inexistant"})
+      }
+    }
+  )
+});
+
+router.post('/register', (req, res) =>{
+  const username = req.body.username;
+  const password = req.body.password;
+  bcrypt.hash(password, saltRounds, (err, hash)=>{
+    if(err){
+      console.log(err)
+    }
+  connection.query("INSERT INTO admin (username, password) VALUES(?,?)",
+  [username, hash],
+  (err, result)=>{
+    if(err){
+      console.log(err);
+      res.send({message : "Identifiants indisponible, veuillez choisir un autre identifiant."})
+    }
+    else {
+      res.send({message : "Compte créé avec succès, vous pouvez maintenant vous connecter."})
     }
   });
-});
+  });
+  });
 
 router.put('/:id', (req, res) => {
   let sql = "UPDATE admin SET ? WHERE id=?";
